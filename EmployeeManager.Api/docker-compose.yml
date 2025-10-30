@@ -12,14 +12,14 @@ services:
 
   api:
     build:
-      context: .                             # raiz do backend
-      dockerfile: EmployeeManager.Api/Dockerfile
+      context: .                
+      dockerfile: EmployeeManager.Api/Dockerfile  
     depends_on:
       - db
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Default: "Host=db;Database=employees;Username=app;Password=app"
-      Jwt__Key: ${JWT__KEY}
+      Jwt__Key: ${JWT__KEY}     
       Jwt__Issuer: "EmployeeManager"
       Jwt__Audience: "EmployeeManagerUsers"
       ASPNETCORE_URLS: "http://+:8080"

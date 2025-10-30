@@ -14,6 +14,9 @@ public class EmployeeRepository : IEmployeeRepository
         _context = context;
     }
 
+    public async Task<IEnumerable<Employee>> GetAllAsync(CancellationToken ct = default)
+        => await _context.Employees.Include(e => e.Phones).ToListAsync(ct);
+
     public async Task<Employee?> GetByIdAsync(Guid id, CancellationToken ct = default)
         => await _context.Employees.Include(e => e.Phones).FirstOrDefaultAsync(e => e.Id == id, ct);
 
