@@ -14,11 +14,22 @@ public class EmployeeRepository : IEmployeeRepository
         _context = context;
     }
 
+    public void DetachAll()
+    {
+        foreach (var entry in _context.ChangeTracker.Entries().ToList())
+            entry.State = EntityState.Detached;
+    }
     public async Task<IEnumerable<Employee>> GetAllAsync(CancellationToken ct = default)
         => await _context.Employees.Include(e => e.Phones).ToListAsync(ct);
-
+    public async Task<Employee?> GetByEmailAsync(string email, CancellationToken ct = default) =>
+        await _context.Employees
+            .Include(e => e.Phones)
+            .FirstOrDefaultAsync(e => e.Email == email, ct);
     public async Task<Employee?> GetByIdAsync(Guid id, CancellationToken ct = default)
-        => await _context.Employees.Include(e => e.Phones).FirstOrDefaultAsync(e => e.Id == id, ct);
+        => await _context
+        .Employees
+        .Include(e => e.Phones)
+        .FirstOrDefaultAsync(e => e.Id == id, ct);
 
     public async Task<Employee?> GetByDocNumberAsync(string docNumber, CancellationToken ct = default)
         => await _context.Employees.FirstOrDefaultAsync(e => e.DocNumber == docNumber, ct);
@@ -37,6 +48,7 @@ public class EmployeeRepository : IEmployeeRepository
 
     public async Task UpdateAsync(Employee employee, CancellationToken ct = default)
     {
+        DetachAll();
         _context.Employees.Update(employee);
         await _context.SaveChangesAsync(ct);
     }

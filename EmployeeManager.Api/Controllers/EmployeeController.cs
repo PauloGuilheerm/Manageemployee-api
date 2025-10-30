@@ -1,9 +1,11 @@
+using System;
 using EmployeeManager.Domain.Entities;
 using EmployeeManager.Domain.Enums;
 using EmployeeManager.Domain.Repositories;
+using EmployeeManager.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
 
 namespace EmployeeManager.Api.Controllers;
 
@@ -13,114 +15,250 @@ namespace EmployeeManager.Api.Controllers;
 public class EmployeeController : ControllerBase
 {
     private readonly IEmployeeRepository _repo;
+    private readonly ApplicationDbContext _db;
 
-    public EmployeeController(IEmployeeRepository repo)
+    public EmployeeController(IEmployeeRepository repo, ApplicationDbContext db)
     {
         _repo = repo;
+        _db = db;
     }
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
-        var employees = (await _repo.GetAllAsync())
+        try
+        {
+            var employees = (await _repo.GetAllAsync())
             .Select(e => new
             {
                 e.Id,
+                e.FirstName,
+                e.LastName,
                 FullName = $"{e.FirstName} {e.LastName}",
                 e.Email,
                 e.DocNumber,
                 e.Role,
+                e.BirthDate,
                 Manager = e.ManagerId,
                 Phones = e.Phones.Select(p => new { p.Number, p.Type })
             });
 
-        return Ok(employees);
+            return StatusCode(StatusCodes.Status200OK, employees);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "An unexpected error occurred. Please try again later or contact support if the problem persists."
+            });
+        }
+    }
+
+    [HttpGet("byEmail/{email}")]
+    public async Task<IActionResult> GetByEmail(string email, CancellationToken ct)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(email))
+                return StatusCode(StatusCodes.Status404NotFound, new { message = "User email not found in token." });
+
+            var employee = await _repo.GetByEmailAsync(email, ct);
+            if (employee is null)
+                return StatusCode(StatusCodes.Status404NotFound, new { message = "Employee not found." });
+
+            return StatusCode(StatusCodes.Status200OK, new
+            {
+                employee.Id,
+                fullName = $"{employee.FirstName} {employee.LastName}",
+                employee.Email,
+                employee.DocNumber,
+                employee.Role,
+                employee.ManagerId,
+                phones = employee.Phones.Select(p => new { p.Number, p.Type })
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "An unexpected error occurred. Please try again later or contact support if the problem persists."
+            });
+        }
     }
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id)
     {
-        var employee = await _repo.GetByIdAsync(id);
-        if (employee is null)
-            return NotFound();
-
-        return Ok(new
+        try
         {
-            employee.Id,
-            FullName = $"{employee.FirstName} {employee.LastName}",
-            employee.Email,
-            employee.DocNumber,
-            employee.Role,
-            Manager = employee.ManagerId,
-            Phones = employee.Phones.Select(p => new { p.Number, p.Type })
-        });
+            var employee = await _repo.GetByIdAsync(id);
+            if (employee is null)
+                return NotFound();
+
+            return StatusCode(StatusCodes.Status200OK, new
+            {
+                employee.Id,
+                employee.FirstName,
+                employee.LastName,
+                employee.BirthDate,
+                FullName = $"{employee.FirstName} {employee.LastName}",
+                employee.Email,
+                employee.DocNumber,
+                employee.Role,
+                Manager = employee.ManagerId,
+                Phones = employee.Phones.Select(p => new { p.Number, p.Type })
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "An unexpected error occurred. Please try again later or contact support if the problem persists."
+            });
+        }
     }
 
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] EmployeeCreateRequest request)
     {
-        var currentUserRole = GetCurrentUserRole();
-        if (!CanCreate(currentUserRole, request.Role))
-            return Forbid("Você não tem permissão para criar um funcionário com esse papel.");
+        try
+        {
+            var currentUserRole = GetCurrentUserRole();
+            if (!CanCreate(currentUserRole, request.Role))
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    message = "You don't have permission to create an employee with this role."
+                });
 
-        if (await _repo.ExistsByDocNumberAsync(request.DocNumber))
-            return BadRequest("Já existe um funcionário com esse documento.");
+            if (await _repo.ExistsByDocNumberAsync(request.DocNumber))
+                return StatusCode(StatusCodes.Status400BadRequest, new
+                {
+                    message = "An employee with this document already exists."
+                });
 
-        var employee = new Employee(
-            firstName: request.FirstName,
-            lastName: request.LastName,
-            email: request.Email,
-            docNumber: request.DocNumber,
-            birthDate: request.BirthDate,
-            role: request.Role,
-            passwordHash: HashPassword(request.Password),
-            managerId: request.ManagerId
-        );
+            if (await _repo.ExistsByEmailAsync(request.Email))
+                return StatusCode(StatusCodes.Status400BadRequest, new
+                {
+                    message = "An employee with this email already exists."
+                });
 
-        if (request.Phones == null || request.Phones.Count == 0)
-            return BadRequest("Pelo menos um telefone é obrigatório.");
+            var employee = new Employee(
+                firstName: request.FirstName,
+                lastName: request.LastName,
+                email: request.Email,
+                docNumber: request.DocNumber,
+                birthDate: request.BirthDate,
+                role: request.Role,
+                passwordHash: HashPassword(request.Password),
+                managerId: request.ManagerId
+            );
 
-        foreach (var p in request.Phones)
-            employee.AddPhone(new Phone(p.Number, p.Type));
+            if (request.Phones == null || request.Phones.Count == 0)
+                return StatusCode(StatusCodes.Status400BadRequest, new
+                {
+                    message = "At least one phone number is required."
+                });
 
-        employee.EnsureAtLeastOnePhone();
+            foreach (var p in request.Phones)
+                employee.AddPhone(new Phone(p.Number, p.Type));
 
-        await _repo.AddAsync(employee);
-        return CreatedAtAction(nameof(GetById), new { id = employee.Id }, new { employee.Id });
+            employee.EnsureAtLeastOnePhone();
+
+            await _repo.AddAsync(employee);
+            return CreatedAtAction(nameof(GetById), new { id = employee.Id }, new { employee.Id });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "An unexpected error occurred. Please try again later or contact support if the problem persists."
+            });
+        }
     }
 
-    [HttpPut("{id:guid}")]
-    public async Task<IActionResult> Update(Guid id, [FromBody] EmployeeUpdateRequest request)
+    [HttpPut("{employeeId:guid}")]
+    public async Task<IActionResult> Update(Guid employeeId, [FromBody] EmployeeUpdateRequest request)
     {
-        var employee = await _repo.GetByIdAsync(id);
-        if (employee is null)
-            return NotFound();
+        try
+        {
+            var employee = await _repo.GetByIdAsync(employeeId);
+            if (employee is null)
+                return NotFound();
 
-        var currentUserRole = GetCurrentUserRole();
-        if (!CanEdit(currentUserRole, employee.Role))
-            return Forbid("Você não tem permissão para editar esse funcionário.");
+            var currentUserRole = GetCurrentUserRole();
+            if (!CanEdit(currentUserRole, employee.Role) && !request.IsOwner)
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    message = "You don't have permission to edit this employee."
+                });
 
-        employee.ChangeManager(request.ManagerId);
-        if (request.NewRole.HasValue && CanCreate(currentUserRole, request.NewRole.Value))
-            employee.ChangeRole(request.NewRole.Value);
+            employee.ChangeManager(request.ManagerId);
+            if (request.NewRole.HasValue && CanCreate(currentUserRole, request.NewRole.Value))
+                employee.ChangeRole(request.NewRole.Value);
 
-        await _repo.UpdateAsync(employee);
-        return NoContent();
+            employee.ChangeBirthDate(request.BirthDate);
+            employee.ChangeNames(request.FirstName, request.LastName);
+
+            var existingPhones = _db.Phones.Where(p => p.EmployeeId == employee.Id);
+            _db.Phones.RemoveRange(existingPhones);
+
+            foreach (var phone in request.Phones)
+            {
+                _db.Phones.Add(new Phone(phone.Number, phone.Type)
+                {
+                    EmployeeId = employee.Id
+                });
+            }
+
+            await _db.SaveChangesAsync();
+
+
+            return StatusCode(StatusCodes.Status200OK, new
+            {
+                employee.Id,
+                fullName = $"{employee.FirstName} {employee.LastName}",
+                employee.Email,
+                employee.DocNumber,
+                employee.Role,
+                employee.ManagerId,
+                phones = employee.Phones
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "An unexpected error occurred. Please try again later or contact support if the problem persists."
+            });
+        }
     }
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var employee = await _repo.GetByIdAsync(id);
-        if (employee is null)
-            return NotFound();
+        try
+        {
+            var employee = await _repo.GetByIdAsync(id);
+            if (employee is null)
+                return NotFound();
 
-        var currentUserRole = GetCurrentUserRole();
-        if (!CanEdit(currentUserRole, employee.Role))
-            return Forbid("Você não tem permissão para excluir esse funcionário.");
+            var currentUserRole = GetCurrentUserRole();
+            if (!CanEdit(currentUserRole, employee.Role))
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    message = "You don't have permission to delete this employee."
+                });
 
-        await _repo.DeleteAsync(employee);
-        return NoContent();
+            await _repo.DeleteAsync(employee);
+            return StatusCode(StatusCodes.Status204NoContent);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "An unexpected error occurred. Please try again later or contact support if the problem persists."
+            });
+        }
     }
 
     private Role GetCurrentUserRole()
@@ -156,4 +294,12 @@ public record EmployeeCreateRequest(
     List<PhoneRequest> Phones
 );
 
-public record EmployeeUpdateRequest(Guid? ManagerId, Role? NewRole);
+public record EmployeeUpdateRequest(
+    Guid? ManagerId, 
+    Role? NewRole,
+    DateTime BirthDate,
+    bool IsOwner,
+    string FirstName,
+    string LastName,
+    List<PhoneRequest> Phones
+    );

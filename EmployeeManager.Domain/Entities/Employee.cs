@@ -6,22 +6,19 @@ namespace EmployeeManager.Domain.Entities;
 
 public sealed class Employee : IAggregateRoot
 {
-    public Guid Id { get; private set; } = Guid.NewGuid();
-    public string FirstName { get; private set; }
-    public string LastName { get; private set; }
-    public string Email { get; private set; }
-    public string DocNumber { get; private set; }
-    public DateTime BirthDate { get; private set; }
-    public Role Role { get; private set; }
+    public Guid Id { get;  set; } = Guid.NewGuid();
+    public string FirstName { get;  set; }
+    public string LastName { get;  set; }
+    public string Email { get;  set; }
+    public string DocNumber { get;  set; }
+    public DateTime BirthDate { get;  set; }
+    public Role Role { get;  set; }
 
-    public Guid? ManagerId { get; private set; }
-    public Employee? Manager { get; private set; }
-
-    private readonly List<Phone> _phones = new();
-    public IReadOnlyCollection<Phone> Phones => _phones.AsReadOnly();
-
-    public string PasswordHash { get; private set; }
-    public DateTime CreatedAt { get; private set; } = DateTime.UtcNow;
+    public Guid? ManagerId { get;  set; }
+    public Employee? Manager { get;  set; }
+    public List<Phone> Phones { get; set; }
+    public string PasswordHash { get;  set; }
+    public DateTime CreatedAt { get;  set; } = DateTime.UtcNow;
 
     internal Employee() { }
 
@@ -47,6 +44,11 @@ public sealed class Employee : IAggregateRoot
         ManagerId = managerId;
     }
 
+    public void ChangeBirthDate(DateTime newBirthDate)
+    {
+        EnsureAdult(newBirthDate);
+        BirthDate = newBirthDate;
+    }
     public void ChangeManager(Guid? managerId)
     {
         if (managerId.HasValue && managerId.Value == Id)
@@ -62,19 +64,30 @@ public sealed class Employee : IAggregateRoot
     public void AddPhone(Phone phone)
     {
         ArgumentNullException.ThrowIfNull(phone);
-        _phones.Add(phone);
+        Phones.Add(phone);
+    }
+
+    public void ResetPhones()
+    {
+        Phones.Clear();
     }
 
     public void EnsureAtLeastOnePhone()
     {
-        if (_phones.Count == 0)
+        if (Phones.Count == 0)
             throw new DomainException("Employee must have at least one phone.");
     }
 
-    private static void EnsureAdult(DateTime birthDate)
+     static void EnsureAdult(DateTime birthDate)
     {
         var limit = DateTime.UtcNow.Date.AddYears(-18);
         if (birthDate.Date > limit)
             throw new DomainException("Employee must be at least 18 years old.");
+    }
+
+    public void ChangeNames(string firstName, string lastName)
+    {
+        FirstName = firstName;
+        LastName = lastName;
     }
 }

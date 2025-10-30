@@ -24,42 +24,62 @@ public class AuthController : ControllerBase
     [HttpPost("register")]
     public async Task<IActionResult> Register(RegisterRequest request)
     {
-        if (await _repo.ExistsByEmailAsync(request.Email))
-            return BadRequest("Email já cadastrado.");
+        try
+        {
+            if (await _repo.ExistsByEmailAsync(request.Email))
+                return StatusCode(StatusCodes.Status400BadRequest, "This email address is already in use.");
 
-        var hash = HashPassword(request.Password);
+            var hash = HashPassword(request.Password);
 
-        var employee = new Employee(
-            firstName: request.FirstName,
-            lastName: request.LastName,
-            email: request.Email,
-            docNumber: request.DocNumber,
-            birthDate: request.BirthDate,
-            role: request.Role,
-            passwordHash: hash
-        );
+            var employee = new Employee(
+                firstName: request.FirstName,
+                lastName: request.LastName,
+                email: request.Email,
+                docNumber: request.DocNumber,
+                birthDate: request.BirthDate,
+                role: request.Role,
+                passwordHash: hash
+            );
 
-        employee.AddPhone(new Phone(request.PhoneNumber, request.PhoneType));
-        employee.EnsureAtLeastOnePhone();
+            employee.AddPhone(new Phone(request.PhoneNumber, request.PhoneType));
+            employee.EnsureAtLeastOnePhone();
 
-        await _repo.AddAsync(employee);
+            await _repo.AddAsync(employee);
 
-        var token = _jwt.GenerateToken(employee);
-        return Ok(new { token });
+            var token = _jwt.GenerateToken(employee);
+            return StatusCode(StatusCodes.Status200OK, new { token });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "An unexpected error occurred. Please try again later or contact support if the problem persists."
+            });
+        }
     }
 
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequest request)
     {
-        var user = await _repo.GetByDocNumberAsync(request.DocNumber);
-        if (user is null)
-            return Unauthorized("Usuário não encontrado.");
+        try
+        {
+            var user = await _repo.GetByDocNumberAsync(request.DocNumber);
+            if (user is null)
+                return StatusCode(StatusCodes.Status400BadRequest, "Usuário não encontrado.");
 
-        if (!VerifyPassword(request.Password, user.PasswordHash))
-            return Unauthorized("Senha inválida.");
+            if (!VerifyPassword(request.Password, user.PasswordHash))
+                return StatusCode(StatusCodes.Status400BadRequest, "Senha inválida.");
 
-        var token = _jwt.GenerateToken(user);
-        return Ok(new { token });
+            var token = _jwt.GenerateToken(user);
+            return StatusCode(StatusCodes.Status200OK, new { token });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "An unexpected error occurred. Please try again later or contact support if the problem persists."
+            });
+        }
     }
 
     private static string HashPassword(string password)
