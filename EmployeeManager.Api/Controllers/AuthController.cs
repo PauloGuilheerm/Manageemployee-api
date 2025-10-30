@@ -1,10 +1,14 @@
+using System;
+using System.Security.Cryptography;
+using System.Text;
 using EmployeeManager.Api.Services;
 using EmployeeManager.Domain.Entities;
 using EmployeeManager.Domain.Enums;
 using EmployeeManager.Domain.Repositories;
+using EmployeeManager.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Cryptography;
-using System.Text;
+using Microsoft.EntityFrameworkCore;
 
 namespace EmployeeManager.Api.Controllers;
 
@@ -13,43 +17,146 @@ namespace EmployeeManager.Api.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly IEmployeeRepository _repo;
+    private readonly ApplicationDbContext _db;
     private readonly JwtService _jwt;
-
-    public AuthController(IEmployeeRepository repo, JwtService jwt)
+    public AuthController(IEmployeeRepository repo, ApplicationDbContext db, JwtService jwt)
     {
         _repo = repo;
+        _db = db;
         _jwt = jwt;
     }
 
-    [HttpPost("register")]
-    public async Task<IActionResult> Register(RegisterRequest request)
+    [HttpPost("login")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken ct)
     {
         try
         {
-            if (await _repo.ExistsByEmailAsync(request.Email))
-                return StatusCode(StatusCodes.Status400BadRequest, "This email address is already in use.");
+            var employee = await _repo.GetByDocNumberAsync(request.DocNumber, ct);
 
-            var hash = HashPassword(request.Password);
+            if (employee is null)
+            {
+                return StatusCode(StatusCodes.Status401Unauthorized, new
+                {
+                    message = "Invalid credentials."
+                });
+            }
 
-            var employee = new Employee(
+            var incomingHash = HashPassword(request.Password);
+
+            if (!string.Equals(incomingHash, employee.PasswordHash, StringComparison.Ordinal))
+            {
+                return StatusCode(StatusCodes.Status401Unauthorized, new
+                {
+                    message = "Invalid credentials."
+                });
+            }
+
+            var token = _jwt.GenerateToken(employee);
+
+            return StatusCode(StatusCodes.Status200OK, new
+            {
+                token,
+                employee = new
+                {
+                    id = employee.Id,
+                    fullName = $"{employee.FirstName} {employee.LastName}",
+                    role = employee.Role.ToString(),
+                    email = employee.Email
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "An unexpected error occurred. Please try again later or contact support if the problem persists."
+            });
+        }
+    }
+
+    [HttpPost("register")]
+    [Authorize]
+    public async Task<IActionResult> Register([FromBody] RegisterRequest request, CancellationToken ct)
+    {
+        try
+        {
+            var currentUserRole = GetCurrentUserRole();
+            if (!CanCreate(currentUserRole, request.Role))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    message = "You don't have permission to create an employee with this role."
+                });
+            }
+
+            var emailExists = await _db.Employees.AnyAsync(e => e.Email == request.Email, ct);
+            if (emailExists)
+            {
+                return StatusCode(StatusCodes.Status400BadRequest, new
+                {
+                    message = "This email address is already in use."
+                });
+            }
+
+            var docExists = await _db.Employees.AnyAsync(e => e.DocNumber == request.DocNumber, ct);
+            if (docExists)
+            {
+                return StatusCode(StatusCodes.Status400BadRequest, new
+                {
+                    message = "An employee with this document number already exists."
+                });
+            }
+
+            if (request.Phones is null || request.Phones.Count == 0)
+            {
+                return StatusCode(StatusCodes.Status400BadRequest, new
+                {
+                    message = "At least one phone number is required."
+                });
+            }
+
+            var passwordHash = HashPassword(request.Password);
+
+            var newEmployee = new Employee(
                 firstName: request.FirstName,
                 lastName: request.LastName,
                 email: request.Email,
                 docNumber: request.DocNumber,
                 birthDate: request.BirthDate,
                 role: request.Role,
-                passwordHash: hash
+                passwordHash: passwordHash,
+                managerId: request.ManagerId
             );
 
-            employee.AddPhone(new Phone(request.PhoneNumber, request.PhoneType));
-            employee.EnsureAtLeastOnePhone();
+            newEmployee.Phones ??= new List<Phone>();
 
-            await _repo.AddAsync(employee);
+            foreach (var p in request.Phones)
+            {
+                newEmployee.Phones.Add(new Phone(p.Number, p.Type)
+                {
+                    EmployeeId = newEmployee.Id
+                });
+            }
 
-            var token = _jwt.GenerateToken(employee);
-            return StatusCode(StatusCodes.Status200OK, new { token });
+            _db.Employees.Add(newEmployee);
+            await _db.SaveChangesAsync(ct);
+
+            var token = _jwt.GenerateToken(newEmployee);
+
+            return StatusCode(StatusCodes.Status201Created, new
+            {
+                token,
+                employee = new
+                {
+                    id = newEmployee.Id,
+                    fullName = $"{newEmployee.FirstName} {newEmployee.LastName}",
+                    role = newEmployee.Role.ToString(),
+                    email = newEmployee.Email
+                }
+            });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, new
             {
@@ -58,43 +165,32 @@ public class AuthController : ControllerBase
         }
     }
 
-    [HttpPost("login")]
-    public async Task<IActionResult> Login(LoginRequest request)
+    // ========= helpers internos =========
+
+    // mesma lógica que você já usa no EmployeeController
+    private Role GetCurrentUserRole()
     {
-        try
-        {
-            var user = await _repo.GetByDocNumberAsync(request.DocNumber);
-            if (user is null)
-                return StatusCode(StatusCodes.Status400BadRequest, "Usuário não encontrado.");
-
-            if (!VerifyPassword(request.Password, user.PasswordHash))
-                return StatusCode(StatusCodes.Status400BadRequest, "Senha inválida.");
-
-            var token = _jwt.GenerateToken(user);
-            return StatusCode(StatusCodes.Status200OK, new { token });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(StatusCodes.Status500InternalServerError, new
-            {
-                message = "An unexpected error occurred. Please try again later or contact support if the problem persists."
-            });
-        }
+        var claim = User.Claims.FirstOrDefault(c => c.Type == "role")?.Value;
+        return Enum.TryParse<Role>(claim, out var role) ? role : Role.Employee;
     }
+
+    // mesma lógica que você já usa no EmployeeController
+    private static bool CanCreate(Role current, Role target)
+        => (int)current >= (int)target;
 
     private static string HashPassword(string password)
     {
         using var sha = SHA256.Create();
-        return Convert.ToBase64String(sha.ComputeHash(Encoding.UTF8.GetBytes(password)));
-    }
-
-    private static bool VerifyPassword(string password, string storedHash)
-    {
-        var hash = HashPassword(password);
-        return hash == storedHash;
+        return Convert.ToBase64String(
+            sha.ComputeHash(Encoding.UTF8.GetBytes(password))
+        );
     }
 }
 
+public record LoginRequest(
+    string DocNumber,
+    string Password
+);
 public record RegisterRequest(
     string FirstName,
     string LastName,
@@ -103,8 +199,11 @@ public record RegisterRequest(
     DateTime BirthDate,
     Role Role,
     string Password,
-    string PhoneNumber,
-    PhoneType PhoneType
+    Guid? ManagerId,
+    List<AuthPhoneRequest> Phones
 );
 
-public record LoginRequest(string DocNumber, string Password);
+public record AuthPhoneRequest(
+    string Number,
+    PhoneType Type
+);

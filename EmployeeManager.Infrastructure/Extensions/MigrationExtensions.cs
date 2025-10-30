@@ -43,8 +43,6 @@ public static class MigrationExtensions
                 director.AddPhone(new Phone("999999999", PhoneType.Mobile));
                 context.Employees.Add(director);
                 context.SaveChanges();
-
-                Console.WriteLine("👤 Director seed criado: doc=00000000000 / senha=Admin@123");
             }
         }
         catch (Exception ex)

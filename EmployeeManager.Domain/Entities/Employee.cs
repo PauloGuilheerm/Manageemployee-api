@@ -16,7 +16,7 @@ public sealed class Employee : IAggregateRoot
 
     public Guid? ManagerId { get;  set; }
     public Employee? Manager { get;  set; }
-    public List<Phone> Phones { get; set; }
+    public List<Phone> Phones { get; set; } = new();
     public string PasswordHash { get;  set; }
     public DateTime CreatedAt { get;  set; } = DateTime.UtcNow;
 

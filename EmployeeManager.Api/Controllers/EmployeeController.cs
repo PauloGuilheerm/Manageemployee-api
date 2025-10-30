@@ -1,4 +1,5 @@
 using System;
+using System.Security.Claims;
 using EmployeeManager.Domain.Entities;
 using EmployeeManager.Domain.Enums;
 using EmployeeManager.Domain.Repositories;
@@ -263,7 +264,7 @@ public class EmployeeController : ControllerBase
 
     private Role GetCurrentUserRole()
     {
-        var claim = User.Claims.FirstOrDefault(c => c.Type == "role")?.Value;
+        var claim = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
         return Enum.TryParse<Role>(claim, out var role) ? role : Role.Employee;
     }
 
