@@ -1,0 +1,343 @@
+{
+    "info": {
+        "_postman_id": "employee-manager-api",
+        "name": "Employee Manager API",
+        "description": "Collection completa para testar a API de Gerenciamento de Funcionários",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Auth",
+            "item": [
+                {
+                    "name": "Login",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "if (pm.response.code === 200) {",
+                                    "    const jsonData = pm.response.json();",
+                                    "    // Salva nas variáveis da collection (funciona sem environment)",
+                                    "    pm.collectionVariables.set(\"token\", jsonData.token);",
+                                    "    pm.collectionVariables.set(\"employeeId\", jsonData.employee.id);",
+                                    "    // Se houver environment ativo, também salva lá",
+                                    "    if (pm.environment.name) {",
+                                    "        pm.environment.set(\"token\", jsonData.token);",
+                                    "        pm.environment.set(\"employeeId\", jsonData.employee.id);",
+                                    "    }",
+                                    "    console.log(\"Token salvo automaticamente!\");",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"docNumber\": \"00000000000\",\n    \"password\": \"Admin@123\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/auth/login",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "auth",
+                                "login"
+                            ]
+                        },
+                        "description": "Endpoint para fazer login e obter o token JWT"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Register",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"João\",\n    \"lastName\": \"Silva\",\n    \"email\": \"joao.silva@example.com\",\n    \"docNumber\": \"98765432100\",\n    \"birthDate\": \"1990-05-15T00:00:00Z\",\n    \"role\": 1,\n    \"password\": \"senha123\",\n    \"managerId\": null,\n    \"phones\": [\n        {\n            \"number\": \"11987654321\",\n            \"type\": 1\n        }\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/auth/register",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "auth",
+                                "register"
+                            ]
+                        },
+                        "description": "Endpoint para registrar um novo funcionário. Requer autenticação e permissões adequadas baseadas em role.\n\nRoles: 1=Employee, 2=Leader, 3=Director\nPhoneTypes: 1=Mobile, 2=Home, 3=Work"
+                    },
+                    "response": []
+                }
+            ],
+            "description": "Endpoints de autenticação"
+        },
+        {
+            "name": "Employees",
+            "item": [
+                {
+                    "name": "Get All Employees",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/employees",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "employees"
+                            ]
+                        },
+                        "description": "Retorna a lista de todos os funcionários"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Employee by ID",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/employees/{{employeeId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "employees",
+                                "{{employeeId}}"
+                            ]
+                        },
+                        "description": "Retorna um funcionário específico pelo ID (Guid)"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Employee by Email",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/employees/byEmail/{{employeeEmail}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "employees",
+                                "byEmail",
+                                "{{employeeEmail}}"
+                            ]
+                        },
+                        "description": "Retorna um funcionário específico pelo email"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Employee",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Maria\",\n    \"lastName\": \"Santos\",\n    \"email\": \"maria.santos@example.com\",\n    \"docNumber\": \"11122233344\",\n    \"birthDate\": \"1985-03-20T00:00:00Z\",\n    \"role\": 1,\n    \"password\": \"senha123\",\n    \"managerId\": null,\n    \"phones\": [\n        {\n            \"number\": \"11999988888\",\n            \"type\": 1\n        },\n        {\n            \"number\": \"11333322222\",\n            \"type\": 2\n        }\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/employees",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "employees"
+                            ]
+                        },
+                        "description": "Cria um novo funcionário. Requer autenticação e permissões adequadas baseadas em role.\n\nRoles: 1=Employee, 2=Leader, 3=Director\nPhoneTypes: 1=Mobile, 2=Home, 3=Work"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Employee",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"managerId\": null,\n    \"newRole\": null,\n    \"birthDate\": \"1985-03-20T00:00:00Z\",\n    \"isOwner\": false,\n    \"firstName\": \"Maria\",\n    \"lastName\": \"Santos Oliveira\",\n    \"phones\": [\n        {\n            \"number\": \"11999988888\",\n            \"type\": 1\n        },\n        {\n            \"number\": \"11333322222\",\n            \"type\": 2\n        },\n        {\n            \"number\": \"11555544444\",\n            \"type\": 3\n        }\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/employees/{{employeeId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "employees",
+                                "{{employeeId}}"
+                            ]
+                        },
+                        "description": "Atualiza um funcionário existente. Requer autenticação e permissões adequadas.\n\nRoles: 1=Employee, 2=Leader, 3=Director\nPhoneTypes: 1=Mobile, 2=Home, 3=Work\n\nisOwner: true permite que o próprio funcionário edite seus dados mesmo com role menor"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Employee",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/employees/{{employeeId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "employees",
+                                "{{employeeId}}"
+                            ]
+                        },
+                        "description": "Deleta um funcionário. Requer autenticação e permissões adequadas baseadas em role"
+                    },
+                    "response": []
+                }
+            ],
+            "description": "Endpoints de gerenciamento de funcionários"
+        }
+    ],
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "http://localhost:5208",
+            "type": "string"
+        },
+        {
+            "key": "token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "employeeId",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "employeeEmail",
+            "value": "director@company.com",
+            "type": "string"
+        }
+    ]
+}

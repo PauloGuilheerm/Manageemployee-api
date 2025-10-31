@@ -1,4 +1,3 @@
-using System;
 using System.Security.Claims;
 using EmployeeManager.Domain.Entities;
 using EmployeeManager.Domain.Enums;
@@ -6,7 +5,6 @@ using EmployeeManager.Domain.Repositories;
 using EmployeeManager.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace EmployeeManager.Api.Controllers;
 
